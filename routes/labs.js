@@ -1,137 +1,175 @@
+// routes/labs.js
 const express = require('express');
-const db = require('../db/db');
-const jwt = require('jsonwebtoken');
-const authenticate = require('../middlewares/auth');
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET;
+const db = require('../db/db');
+const auth = require('../middlewares/auth');
 
-// Middleware: Verify instructor
-function verifyInstructor(req, res, next) {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing token' });
+// Create lab (instructor)
+router.post('/', auth('instructor'), (req, res) => {
+  const { title, description, description_markdown, hint, difficulty, flag, score } = req.body;
+  if (!title || !flag || !score) return res.status(400).json({ error: 'title, flag, score required' });
 
-  const match = auth.match(/Bearer (.+)/);
-  if (!match) return res.status(401).json({ error: 'Invalid token' });
-
-  try {
-    const payload = jwt.verify(match[1], JWT_SECRET);
-    if (payload.role !== 'instructor') return res.status(403).json({ error: 'Not authorized' });
-    req.user = payload;
-    next();
-  } catch (e) {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-}
-
-// --- Create Lab ---
-router.post('/', verifyInstructor, (req, res) => {
-  const { title, description, flag, score } = req.body;
   db.run(
-    `INSERT INTO labs (title, description, flag, score) VALUES (?, ?, ?, ?)`,
-    [title, description, flag, score],
+    `INSERT INTO labs (title, description, description_markdown, hint, difficulty, flag, score) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [title, description || '', description_markdown || null, hint || '', difficulty || 'easy', flag, score],
     function(err) {
-      if (err) return res.status(500).json({ error: 'DB Error' });
-      res.json({ message: 'Lab created', labId: this.lastID });
+      if (err) return res.status(500).json({ error: 'DB error' });
+      res.json({ message: 'Lab created', id: this.lastID });
     }
   );
 });
 
-// --- Get all Labs (students can see) ---
-router.get('/', (req, res) => {
-  db.all(
-    `SELECT id, title, description, score FROM labs`,
-    [],
-    (err, rows) => {
-      if (err) return res.status(500).json({ error: 'DB Error' });
+router.get("/:id/attempts", auth(), (req, res) => {
+  const labId = parseInt(req.params.id, 10);
+  const studentId = req.query.studentId
+  ? parseInt(req.query.studentId, 10)
+  : req.user.id;
 
-      res.json({ labs: rows });
-    }
-  );
-});
+  const q = `
+    SELECT 
+      submissions.id AS id,
+      submissions.lab_id AS labId,
+      labs.title AS labTitle,
+      submissions.flag AS flag,
+      submissions.score_awarded AS score,
+      submissions.created_at AS submitted_at
+    FROM submissions
+    JOIN labs ON submissions.lab_id = labs.id
+    WHERE submissions.student_id = ?
+      AND submissions.lab_id = ?
+    ORDER BY submissions.created_at DESC
+    LIMIT 1000
+  `;
 
-router.get("/:id", (req, res) => {
-  const labId = req.params.id;
-
-  db.get("SELECT id, title, description, score FROM labs WHERE id = ?", [labId], (err, lab) => {
+  db.all(q, [studentId, labId], (err, rows) => {
     if (err) return res.status(500).json({ error: "DB error" });
-    if (!lab) return res.status(404).json({ error: "Lab not found" });
 
+    const attempts = rows.map((r) => ({
+      id: r.id,
+      labId: r.labId,
+      labTitle: r.labTitle,
+      flag: r.flag,
+      score: r.score,
+      correct: r.score > 0,
+      submitted_at: r.submitted_at,
+    }));
+
+    return res.json({ attempts });
+  });
+});
+
+// Get all labs (public to authenticated)
+router.get('/', auth(), (req, res) => {
+  const query = `
+    SELECT 
+      labs.id,
+      labs.title,
+      labs.description,
+      labs.score,
+      labs.difficulty,
+      COUNT(submissions.id) AS submissionsCount
+    FROM labs
+    LEFT JOIN submissions ON submissions.lab_id = labs.id
+    GROUP BY labs.id
+    ORDER BY labs.id ASC
+  `;
+
+  db.all(query, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'DB Error' });
+    res.json({ labs: rows });
+  });
+});
+// Get single lab info (students call this)
+router.get("/:id", auth(), (req, res) => {
+  const labId = req.params.id;
+  const studentId = req.user.id;
+
+  const q = `
+    SELECT labs.*, 
+      CASE WHEN submissions.score_awarded > 0 THEN 1 ELSE 0 END AS completed
+    FROM labs
+    LEFT JOIN submissions 
+      ON submissions.lab_id = labs.id AND submissions.student_id = ?
+    WHERE labs.id = ?
+    LIMIT 1
+  `;
+
+  db.get(q, [studentId, labId], (err, row) => {
+    if (err) return res.status(500).json({ error: "DB error" });
+    if (!row) return res.status(404).json({ error: "Lab not found" });
+
+    // Convert completed from 0/1 to true/false
+    const lab = { ...row, completed: !!row.completed };
     res.json(lab);
   });
 });
 
-router.get("/:id/submissions", (req, res) => {
+// Get hint (protected route; can be open)
+router.get('/:id/hint', auth(), (req, res) => {
   const labId = req.params.id;
-
-  // Get lab info
-  db.get("SELECT * FROM labs WHERE id = ?", [labId], (err, lab) => {
-    if (err) return res.status(500).json({ error: "DB error" });
-    if (!lab) return res.status(404).json({ error: "Lab not found" });
-
-    // Get submissions for this lab
-    db.all(
-      `SELECT 
-          submissions.id,
-          submissions.flag,
-          submissions.score_awarded,
-          users.username AS studentName
-       FROM submissions
-       JOIN users ON submissions.student_id = users.id
-       WHERE submissions.lab_id = ?
-       ORDER BY submissions.id DESC`,
-      [labId],
-      (err, submissionRows) => {
-        console.log(err);
-        if (err) return res.status(500).json({ error: "DB error" });
-
-        // Compute 'correct' dynamically
-        const submissions = submissionRows.map((s) => ({
-          id: s.id,
-          studentName: s.studentName,
-          flag: s.flag,
-          correct: s.score_awarded === lab.score,
-        }));
-
-        return res.json({
-          id: lab.id,
-          title: lab.title,
-          description: lab.description,
-          score: lab.score,
-          submissionsCount: submissions.length,
-          submissions,
-        });
-      }
-    );
+  db.get("SELECT hint FROM labs WHERE id = ?", [labId], (err, row) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    if (!row) return res.status(404).json({ error: 'Lab not found' });
+    res.json({ hint: row.hint || '' });
   });
 });
 
-router.put("/:id", authenticate(), (req, res) => {
+// Update lab (instructor)
+router.put('/:id', auth('instructor'), (req, res) => {
   const labId = req.params.id;
-  const { title, description, flag, score } = req.body;
-
-  // Validate input
-  if (!title || !description || !flag || !score) {
-    return res.status(400).json({ error: "All fields are required" });
-  }
-
-  const parsedScore = parseInt(score);
-  if (isNaN(parsedScore) || parsedScore < 1) {
-    return res.status(400).json({ error: "Score must be a positive number" });
-  }
+  const { title, description, description_markdown, hint, difficulty, flag, score } = req.body;
+  if (!title || !flag || !score) return res.status(400).json({ error: 'title, flag, score required' });
 
   db.run(
-    `UPDATE labs 
-     SET title = ?, description = ?, flag = ?, score = ? 
-     WHERE id = ?`,
-    [title, description, flag, parsedScore, labId],
-    function (err) {
-      if (err) return res.status(500).json({ error: "DB error" });
-      if (this.changes === 0) return res.status(404).json({ error: "Lab not found" });
-
-      res.json({ message: "Lab updated successfully" });
+    `UPDATE labs SET title = ?, description = ?, description_markdown = ?, hint = ?, difficulty = ?, flag = ?, score = ? WHERE id = ?`,
+    [title, description || '', description_markdown || null, hint || '', difficulty || 'easy', flag, score, labId],
+    function(err) {
+      if (err) return res.status(500).json({ error: 'DB error' });
+      if (this.changes === 0) return res.status(404).json({ error: 'Lab not found' });
+      res.json({ message: 'Lab updated' });
     }
   );
 });
 
+// Delete lab (instructor)
+router.delete('/:id', auth('instructor'), (req, res) => {
+  const labId = req.params.id;
+  db.run("DELETE FROM labs WHERE id = ?", [labId], function(err) {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    if (this.changes === 0) return res.status(404).json({ error: 'Lab not found' });
+    res.json({ message: 'Lab deleted' });
+  });
+});
+
+// GET lab submissions (separate route for instructor)
+router.get('/:id/submissions', auth('instructor'), (req, res) => {
+  const labId = req.params.id;
+  db.get("SELECT score FROM labs WHERE id = ?", [labId], (err, lab) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    if (!lab) return res.status(404).json({ error: 'Lab not found' });
+
+    db.all(
+      `SELECT submissions.id, submissions.flag, submissions.score_awarded, submissions.created_at, users.username AS studentName
+       FROM submissions
+       JOIN users ON submissions.student_id = users.id
+       WHERE submissions.lab_id = ?
+       ORDER BY submissions.created_at DESC`,
+      [labId],
+      (err, rows) => {
+        if (err) return res.status(500).json({ error: 'DB error' });
+
+        const submissions = rows.map((s) => ({
+          id: s.id,
+          studentName: s.studentName,
+          flag: s.flag,
+          correct: s.score_awarded === lab.score,
+          timestamp: s.created_at
+        }));
+
+        res.json({ submissions, submissionsCount: submissions.length });
+      }
+    );
+  });
+});
 
 module.exports = router;
