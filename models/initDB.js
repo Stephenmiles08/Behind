@@ -1,4 +1,5 @@
-// models/initDB.js
+require('dotenv').config();
+
 const db = require('../db/db');
 const bcrypt = require('bcrypt');
 
@@ -50,7 +51,12 @@ async function initDB() {
     `);
 
     // Seed default super-instructor
-    const defaultInstructor = { username: 'superinstructor', password: 'Password123!', role: 'instructor', name: 'Super Instructor' };
+    const defaultInstructor = {
+      username: process.env.DEFAULT_INSTRUCTOR_USERNAME || 'superinstructor',
+      password: process.env.DEFAULT_INSTRUCTOR_PASSWORD || 'Password123!',
+      role: 'instructor',
+      name: process.env.DEFAULT_INSTRUCTOR_NAME || 'Super Instructor',
+    };
     const hash = await bcrypt.hash(defaultInstructor.password, 10);
 
     db.run(
