@@ -52,8 +52,8 @@ async function initDB() {
 
     // Seed default super-instructor
     const defaultInstructor = {
-      username: process.env.DEFAULT_INSTRUCTOR_USERNAME || 'superinstructor',
-      password: process.env.DEFAULT_INSTRUCTOR_PASSWORD || 'Password123!',
+      username: process.env.DEFAULT_INSTRUCTOR_USERNAME,
+      password: process.env.DEFAULT_INSTRUCTOR_PASSWORD,
       role: 'instructor',
       name: process.env.DEFAULT_INSTRUCTOR_NAME || 'Super Instructor',
     };
