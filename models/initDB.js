@@ -9,6 +9,7 @@ async function initDB() {
     db.run(`DROP TABLE IF EXISTS submissions`);
     db.run(`DROP TABLE IF EXISTS labs`);
     db.run(`DROP TABLE IF EXISTS users`);
+    db.run(`DROP TABLE IF EXISTS app_config`); // NEW
 
     // Users table
     db.run(`
@@ -22,7 +23,8 @@ async function initDB() {
       )
     `);
 
-    // Labs table (added difficulty & hint & description stays)
+    // Labs table (added difficulty, hint, description retained)
+    // NEW: lab_type → 'exercise' | 'competition'
     db.run(`
       CREATE TABLE labs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,6 +33,7 @@ async function initDB() {
         description_markdown TEXT,
         hint TEXT,
         difficulty TEXT DEFAULT 'easy',
+        lab_type TEXT DEFAULT 'exercise',     -- NEW FIELD
         flag TEXT,
         score INTEGER
       )
@@ -50,6 +53,20 @@ async function initDB() {
       )
     `);
 
+    // NEW: Global app config table for mode switching (exercise/competition)
+    db.run(`
+      CREATE TABLE app_config (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        key TEXT UNIQUE,
+        mode TEXT
+      )
+    `);
+
+    // Seed default config → "exercise" mode
+    db.run(
+      `INSERT INTO app_config (key, mode) VALUES ('lab_mode', 'exercise')`
+    );
+
     // Seed default super-instructor
     const defaultInstructor = {
       username: process.env.DEFAULT_INSTRUCTOR_USERNAME,
@@ -65,16 +82,17 @@ async function initDB() {
       () => console.log('Default super-instructor created')
     );
 
-    // Optional: seed a couple labs
+    // Seed 1 example lab (now with lab_type)
     db.run(
-      `INSERT INTO labs (title, description, description_markdown, hint, difficulty, flag, score)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO labs (title, description, description_markdown, hint, difficulty, lab_type, flag, score)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         'Intro Brute Force',
         'Find the admin by brute force.',
         'Find the admin by brute force.\n\n- Try enumeration\n- Use a wordlist',
         'Try common admin-like usernames and short passwords.',
         'easy',
+        'exercise',                 
         'FLAG-BRUTE-EXAMPLE-001',
         100,
       ],

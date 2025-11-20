@@ -6,12 +6,23 @@ const auth = require('../middlewares/auth');
 
 // Create lab (instructor)
 router.post('/', auth('instructor'), (req, res) => {
-  const { title, description, description_markdown, hint, difficulty, flag, score } = req.body;
+  const { 
+    title, 
+    description, 
+    description_markdown, 
+    hint, 
+    difficulty, 
+    lab_type,          
+    flag, 
+    score 
+  } = req.body;
   if (!title || !flag || !score) return res.status(400).json({ error: 'title, flag, score required' });
 
   db.run(
-    `INSERT INTO labs (title, description, description_markdown, hint, difficulty, flag, score) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [title, description || '', description_markdown || null, hint || '', difficulty || 'easy', flag, score],
+    `INSERT INTO labs (title, description, description_markdown, hint, difficulty, lab_type, flag, score) 
+ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+ [title, description || '', description_markdown || null, hint || '', difficulty || 'easy', lab_type || 'exercise', flag, score]
+ ,
     function(err) {
       if (err) return res.status(500).json({ error: 'DB error' });
       res.json({ message: 'Lab created', id: this.lastID });
@@ -58,27 +69,48 @@ router.get("/:id/attempts", auth(), (req, res) => {
   });
 });
 
+router.get('/all', auth('instructor'), (req, res) => {
+  db.all(
+    `SELECT * FROM labs`,
+    [],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: 'DB error' });
+      res.json({ labs: rows });
+    }
+  );
+});
+
 // Get all labs (public to authenticated)
 router.get('/', auth(), (req, res) => {
-  const query = `
-    SELECT 
-      labs.id,
-      labs.title,
-      labs.description,
-      labs.score,
-      labs.difficulty,
-      COUNT(submissions.id) AS submissionsCount
-    FROM labs
-    LEFT JOIN submissions ON submissions.lab_id = labs.id
-    GROUP BY labs.id
-    ORDER BY labs.id ASC
-  `;
+  // Get global lab mode from app_config
+  db.get("SELECT mode FROM app_config WHERE key = 'lab_mode' LIMIT 1", [], (err, configRow) => {
+    if (err) return res.status(500).json({ error: 'DB error (mode)' });
 
-  db.all(query, [], (err, rows) => {
-    if (err) return res.status(500).json({ error: 'DB Error' });
-    res.json({ labs: rows });
+    const activeMode = configRow?.mode || 'exercise';
+
+    const query = `
+      SELECT 
+        labs.id,
+        labs.title,
+        labs.description,
+        labs.score,
+        labs.difficulty,
+        labs.lab_type,
+        COUNT(submissions.id) AS submissionsCount
+      FROM labs
+      LEFT JOIN submissions ON submissions.lab_id = labs.id
+      WHERE labs.lab_type = ?
+      GROUP BY labs.id
+      ORDER BY labs.id ASC
+    `;
+
+    db.all(query, [activeMode], (err, rows) => {
+      if (err) return res.status(500).json({ error: 'DB Error' });
+      res.json({ labs: rows, mode: activeMode });
+    });
   });
 });
+
 // Get single lab info (students call this)
 router.get("/:id", auth(), (req, res) => {
   const labId = req.params.id;
@@ -117,12 +149,25 @@ router.get('/:id/hint', auth(), (req, res) => {
 // Update lab (instructor)
 router.put('/:id', auth('instructor'), (req, res) => {
   const labId = req.params.id;
-  const { title, description, description_markdown, hint, difficulty, flag, score } = req.body;
+  const { 
+    title, 
+    description, 
+    description_markdown, 
+    hint, 
+    difficulty, 
+    lab_type,       
+    flag, 
+    score 
+  } = req.body;
+  
   if (!title || !flag || !score) return res.status(400).json({ error: 'title, flag, score required' });
 
   db.run(
-    `UPDATE labs SET title = ?, description = ?, description_markdown = ?, hint = ?, difficulty = ?, flag = ?, score = ? WHERE id = ?`,
-    [title, description || '', description_markdown || null, hint || '', difficulty || 'easy', flag, score, labId],
+    `UPDATE labs 
+SET title = ?, description = ?, description_markdown = ?, hint = ?, difficulty = ?, lab_type = ?, flag = ?, score = ?
+WHERE id = ?`,
+[title, description || '', description_markdown || null, hint || '', difficulty || 'easy', lab_type ?? undefined, flag, score, labId]
+,
     function(err) {
       if (err) return res.status(500).json({ error: 'DB error' });
       if (this.changes === 0) return res.status(404).json({ error: 'Lab not found' });

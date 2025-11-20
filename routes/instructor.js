@@ -25,6 +25,8 @@ router.get('/students', auth('instructor'), (req, res) => {
   });
 });
 
+
+
 // GET /instructor/student/:id - profile for a student (attempts + summary)
 router.get('/students/:id', auth('instructor'), (req, res) => {
   const studentId = parseInt(req.params.id, 10);

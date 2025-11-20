@@ -54,26 +54,31 @@ router.post('/change-password', auth(), (req, res) => {
   const userId = req.user.id;
   const { oldPassword, newPassword } = req.body;
 
-  if (!oldPassword || !newPassword) {
-    return res.status(400).json({ error: 'Old and new password are required' });
-  }
+  if (!oldPassword || !newPassword)
+    return res.status(400).json({ error: 'Both passwords required' });
 
-  // Get the current hashed password
-  db.get('SELECT password FROM users WHERE id = ?', [userId], async (err, row) => {
+  db.get("SELECT password FROM users WHERE id = ?", [userId], (err, user) => {
     if (err) return res.status(500).json({ error: 'DB error' });
-    if (!row) return res.status(404).json({ error: 'User not found' });
 
-    const isMatch = await bcrypt.compare(oldPassword, row.password);
-    if (!isMatch) return res.status(401).json({ error: 'Old password is incorrect' });
+    bcrypt.compare(oldPassword, user.password, (err, match) => {
+      if (err) return res.status(500).json({ error: 'Hash error' });
+      if (!match) return res.status(403).json({ error: 'Incorrect old password' });
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+      bcrypt.hash(newPassword, 10, (err, hash) => {
+        if (err) return res.status(500).json({ error: 'Hash error' });
 
-    db.run('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, userId], (err) => {
-      if (err) return res.status(500).json({ error: 'DB error' });
-
-      res.json({ message: 'Password changed successfully' });
+        db.run(
+          "UPDATE users SET password = ? WHERE id = ?",
+          [hash, userId],
+          (err) => {
+            if (err) return res.status(500).json({ error: 'DB error' });
+            res.json({ message: 'Password updated successfully' });
+          }
+        );
+      });
     });
   });
 });
+
 
 module.exports = router;
