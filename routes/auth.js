@@ -6,6 +6,8 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const auth = require('../middlewares/auth');
 require('dotenv').config();
+const ROLES = require('../libs/roles');
+
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 
 // Student registration
@@ -39,7 +41,7 @@ router.post('/auth/login', (req, res) => {
 });
 
 // Register instructor (only instructor/admin can create instructors)
-router.post('/register-instructor', auth('instructor'), async (req, res) => {
+router.post('/register-instructor', auth([ROLES.SUPERADMIN]), async (req, res) => {
   const { username, password, name } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'username and password required' });
 

@@ -3,9 +3,10 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db/db');
 const auth = require('../middlewares/auth');
+const ROLES = require('../libs/roles');
 
 // GET /instructor/students - list students + total score + count solved
-router.get('/students', auth('instructor'), (req, res) => {
+router.get('/students', auth([ROLES.SUPERADMIN, ROLES.INSTRUCTOR]), (req, res) => {
     const query = `
     SELECT 
       u.id,
@@ -28,7 +29,7 @@ router.get('/students', auth('instructor'), (req, res) => {
 
 
 // GET /instructor/student/:id - profile for a student (attempts + summary)
-router.get('/students/:id', auth('instructor'), (req, res) => {
+router.get('/students/:id', auth([ROLES.SUPERADMIN, ROLES.INSTRUCTOR]), (req, res) => {
   const studentId = parseInt(req.params.id, 10);
   if (isNaN(studentId)) return res.status(400).json({ error: 'invalid id' });
 
@@ -51,7 +52,7 @@ router.get('/students/:id', auth('instructor'), (req, res) => {
   });
 });
 
-router.get('/', auth('instructor'), (req, res) => {
+router.get('/', auth([ROLES.SUPERADMIN]), (req, res) => {
     const q = `
       SELECT id, username
       FROM users

@@ -4,9 +4,11 @@ const router = express.Router();
 const db = require('../db/db');
 const auth = require('../middlewares/auth');
 const initDB = require('../models/initDB');
+const ROLES = require('../libs/roles');
+
 
 // POST /admin/reset-db  (instructor only or admin)
-router.post('/reset-db', auth('instructor'), async (req, res) => {
+router.post('/reset-db', auth([ROLES.SUPERADMIN]), async (req, res) => {
   try {
     await initDB();
     return res.json({ message: 'Database reinitialized' });
@@ -16,7 +18,7 @@ router.post('/reset-db', auth('instructor'), async (req, res) => {
 });
 
 // POST /admin/reset-scores (delete submissions and reset user scores)
-router.post('/reset-scores', auth('instructor'), (req, res) => {
+router.post('/reset-scores', auth([ROLES.SUPERADMIN, ROLES.INSTRUCTOR]), (req, res) => {
   db.serialize(() => {
     db.run("DELETE FROM submissions", (err) => {
       if (err) return res.status(500).json({ error: 'DB error' });
@@ -29,7 +31,7 @@ router.post('/reset-scores', auth('instructor'), (req, res) => {
 });
 
 // POST /admin/reset-labs (recreate default labs only)
-router.post('/reset-labs', auth('instructor'), (req, res) => {
+router.post('/reset-labs', auth([ROLES.SUPERADMIN, ROLES.INSTRUCTOR]), (req, res) => {
   db.serialize(() => {
     db.run("DELETE FROM labs", (err) => {
       if (err) return res.status(500).json({ error: 'DB error' });

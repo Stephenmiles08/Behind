@@ -3,9 +3,10 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db/db');
 const auth = require('../middlewares/auth');
+const ROLES = require('../libs/roles');
 
 // POST /submissions - student submits a flag
-router.post('/', auth('student'), (req, res) => {
+router.post('/', auth([ROLES.STUDENT]), (req, res) => {
   const studentId = req.user.id;
   const { labId, flag } = req.body;
   if (!labId || !flag) return res.status(400).json({ error: 'labId and flag required' });
@@ -56,7 +57,7 @@ router.post('/', auth('student'), (req, res) => {
 
 
 // GET /submissions/solved/:studentId
-router.get("/solved/:studentId", auth("instructor"), (req, res) => {
+router.get("/solved/:studentId", auth([ROLES.INSTRUCTOR, ROLES.SUPERADMIN]), (req, res) => {
   const studentId = parseInt(req.params.studentId, 10);
 
   const q = `

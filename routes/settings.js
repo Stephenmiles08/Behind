@@ -2,8 +2,9 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db/db');
 const auth = require('../middlewares/auth');
+const ROLES = require('../libs/roles');
 
-router.post('/mode', auth('instructor'), (req, res) => {
+router.post('/mode', auth([ROLES.SUPERADMIN]), (req, res) => {
     const { mode } = req.body;
     
     if (!['exercise', 'competition'].includes(mode)) {
@@ -16,7 +17,7 @@ router.post('/mode', auth('instructor'), (req, res) => {
     });
   });
 
-  router.get('/mode', auth(), (req, res) => {
+  router.get('/mode', auth([ROLES.SUPERADMIN]), (req, res) => {
     db.get("SELECT mode FROM app_config WHERE id = 1", (err, row) => {
       if (err) return res.status(500).json({ error: 'DB error' });
       res.json({ mode: row.mode });

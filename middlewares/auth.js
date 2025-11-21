@@ -2,7 +2,11 @@
 const jwt = require('jsonwebtoken');
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 
-function authenticate(requiredRole = null) {
+/**
+ * @param allowedRoles {string[]} - Array of roles that can access this route
+ * If empty or undefined, any authenticated user can access
+ */
+function authenticate(allowedRoles = []) {
   return (req, res, next) => {
     const auth = req.headers.authorization;
     if (!auth) return res.status(401).json({ error: 'Missing token' });
@@ -12,16 +16,16 @@ function authenticate(requiredRole = null) {
 
     try {
       const payload = jwt.verify(match[1], JWT_SECRET);
+      req.user = payload;
 
-      if (requiredRole) {
-        // allow admin to act as instructor too
-        if (requiredRole === 'instructor' && payload.role === 'admin') {
-          return next();
-        }
-        if (payload.role !== requiredRole) return res.status(403).json({ error: 'Not authorized' });
+      // No roles required, just authentication
+      if (allowedRoles.length === 0) return next();
+
+      // Check if the user's role is allowed
+      if (!allowedRoles.includes(payload.role)) {
+        return res.status(403).json({ error: 'Not authorized' });
       }
 
-      req.user = payload;
       next();
     } catch (e) {
       return res.status(401).json({ error: 'Invalid token' });

@@ -71,7 +71,7 @@ async function initDB() {
     const defaultInstructor = {
       username: process.env.DEFAULT_INSTRUCTOR_USERNAME,
       password: process.env.DEFAULT_INSTRUCTOR_PASSWORD,
-      role: 'instructor',
+      role: 'superadmin',
       name: process.env.DEFAULT_INSTRUCTOR_NAME || 'Super Instructor',
     };
     const hash = await bcrypt.hash(defaultInstructor.password, 10);

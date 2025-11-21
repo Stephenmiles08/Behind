@@ -4,6 +4,7 @@ const router = express.Router();
 const db = require('../db/db');
 const auth = require('../middlewares/auth');
 
+
 // GET /leaderboard?period=today|week|all&metric=score|labs
 router.get('/', auth(), (req, res) => {
   const period = req.query.period || 'all'; // today, week, all

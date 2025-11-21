@@ -3,9 +3,10 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db/db');
 const auth = require('../middlewares/auth');
+const ROLES = require('../libs/roles');
 
 // Create lab (instructor)
-router.post('/', auth('instructor'), (req, res) => {
+router.post('/', auth([ROLES.SUPERADMIN, ROLES.INSTRUCTOR]), (req, res) => {
   const { 
     title, 
     description, 
@@ -69,7 +70,7 @@ router.get("/:id/attempts", auth(), (req, res) => {
   });
 });
 
-router.get('/all', auth('instructor'), (req, res) => {
+router.get('/all', auth([ROLES.SUPERADMIN, ROLES.INSTRUCTOR]), (req, res) => {
   db.all(
     `SELECT * FROM labs`,
     [],
@@ -147,7 +148,7 @@ router.get('/:id/hint', auth(), (req, res) => {
 });
 
 // Update lab (instructor)
-router.put('/:id', auth('instructor'), (req, res) => {
+router.put('/:id', auth([ROLES.SUPERADMIN, ROLES.SUPERADMIN]), (req, res) => {
   const labId = req.params.id;
   const { 
     title, 
@@ -177,7 +178,7 @@ WHERE id = ?`,
 });
 
 // Delete lab (instructor)
-router.delete('/:id', auth('instructor'), (req, res) => {
+router.delete('/:id', auth([ROLES.SUPERADMIN, ROLES.SUPERADMIN]), (req, res) => {
   const labId = req.params.id;
   db.run("DELETE FROM labs WHERE id = ?", [labId], function(err) {
     if (err) return res.status(500).json({ error: 'DB error' });
@@ -187,7 +188,7 @@ router.delete('/:id', auth('instructor'), (req, res) => {
 });
 
 // GET lab submissions (separate route for instructor)
-router.get('/:id/submissions', auth('instructor'), (req, res) => {
+router.get('/:id/submissions', auth([ROLES.SUPERADMIN, ROLES.INSTRUCTOR]), (req, res) => {
   const labId = req.params.id;
   db.get("SELECT score FROM labs WHERE id = ?", [labId], (err, lab) => {
     if (err) return res.status(500).json({ error: 'DB error' });
