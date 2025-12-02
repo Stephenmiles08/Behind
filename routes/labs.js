@@ -60,7 +60,6 @@ router.get("/:id/attempts", auth(), (req, res) => {
       id: r.id,
       labId: r.labId,
       labTitle: r.labTitle,
-      flag: r.flag,
       score: r.score,
       correct: r.score > 0,
       submitted_at: r.submitted_at,
@@ -112,27 +111,37 @@ router.get('/', auth(), (req, res) => {
   });
 });
 
-// Get single lab info (students call this)
+// Get single lab info (students call 
+
 router.get("/:id", auth(), (req, res) => {
   const labId = req.params.id;
-  const studentId = req.user.id;
+  const userId = req.user.id;
+  const userRoles = req.user.role;
+  const isPrivileged = userRoles.includes("superadmin") || userRoles.includes("instructor");
 
   const q = `
-    SELECT labs.*, 
-      CASE WHEN submissions.score_awarded > 0 THEN 1 ELSE 0 END AS completed
+    SELECT labs.*,
+           CASE WHEN submissions.score_awarded > 0 THEN 1 ELSE 0 END AS completed
     FROM labs
-    LEFT JOIN submissions 
-      ON submissions.lab_id = labs.id AND submissions.student_id = ?
+    LEFT JOIN submissions
+      ON submissions.lab_id = labs.id 
+     AND submissions.student_id = ?
     WHERE labs.id = ?
     LIMIT 1
   `;
 
-  db.get(q, [studentId, labId], (err, row) => {
+  db.get(q, [userId, labId], (err, row) => {
     if (err) return res.status(500).json({ error: "DB error" });
     if (!row) return res.status(404).json({ error: "Lab not found" });
 
-    // Convert completed from 0/1 to true/false
     const lab = { ...row, completed: !!row.completed };
+
+    // Hide flag for students only
+    if (!isPrivileged) {
+      lab.flag = "Nice try😁😁";
+    
+    }
+
     res.json(lab);
   });
 });
@@ -148,7 +157,7 @@ router.get('/:id/hint', auth(), (req, res) => {
 });
 
 // Update lab (instructor)
-router.put('/:id', auth([ROLES.SUPERADMIN, ROLES.SUPERADMIN]), (req, res) => {
+router.put('/:id', auth([ROLES.INSTRUCTOR, ROLES.SUPERADMIN]), (req, res) => {
   const labId = req.params.id;
   const { 
     title, 
@@ -178,7 +187,7 @@ WHERE id = ?`,
 });
 
 // Delete lab (instructor)
-router.delete('/:id', auth([ROLES.SUPERADMIN, ROLES.SUPERADMIN]), (req, res) => {
+router.delete('/:id', auth([ROLES.INSTRUCTOR, ROLES.SUPERADMIN]), (req, res) => {
   const labId = req.params.id;
   db.run("DELETE FROM labs WHERE id = ?", [labId], function(err) {
     if (err) return res.status(500).json({ error: 'DB error' });

@@ -11,42 +11,46 @@ router.post('/', auth([ROLES.STUDENT]), (req, res) => {
   const { labId, flag } = req.body;
   if (!labId || !flag) return res.status(400).json({ error: 'labId and flag required' });
 
-  // Step 1: Check if lab exists
   db.get("SELECT id, flag, score FROM labs WHERE id = ?", [labId], (err, lab) => {
     if (err) return res.status(500).json({ error: 'DB error' });
     if (!lab) return res.status(404).json({ error: 'Lab not found' });
 
-    // Step 2: Check if student has already solved this lab
+    // Check if already solved (same query you already use)
     db.get(
       "SELECT 1 FROM submissions WHERE student_id = ? AND lab_id = ? AND score_awarded > 0 LIMIT 1",
       [studentId, labId],
-      (err, solved) => {
+      (err, alreadySolved) => {
         if (err) return res.status(500).json({ error: 'DB error' });
-        if (solved) {
-          return res.status(400).json({ error: 'Lab already solved. You cannot resubmit.' });
+
+        if (alreadySolved) {
+          return res.status(400).json({ 
+            error: 'Lab already solved. You cannot resubmit.' 
+          });
         }
 
-        // Step 3: Calculate score for this submission
         const score_awarded = flag === lab.flag ? lab.score : 0;
+        const correct = score_awarded === lab.score;
 
-        // Step 4: Insert submission
         db.run(
           `INSERT INTO submissions (student_id, lab_id, flag, score_awarded) VALUES (?, ?, ?, ?)`,
           [studentId, labId, flag, score_awarded],
           function(err) {
             if (err) return res.status(500).json({ error: 'DB error' });
 
-            // Step 5: Update user's score if correct
             if (score_awarded > 0) {
               db.run(`UPDATE users SET score = COALESCE(score,0) + ? WHERE id = ?`, [score_awarded, studentId]);
             }
+
+            // THIS IS THE ONLY NEW LINE YOU NEED
+            const completed = correct; // true only if this submission was correct
 
             res.json({
               id: this.lastID,
               labId,
               flag,
               score_awarded,
-              correct: score_awarded === lab.score,
+              correct,
+              completed, // ← THIS makes the frontend work perfectly
             });
           }
         );
@@ -54,7 +58,6 @@ router.post('/', auth([ROLES.STUDENT]), (req, res) => {
     );
   });
 });
-
 
 // GET /submissions/solved/:studentId
 router.get("/solved/:studentId", auth([ROLES.INSTRUCTOR, ROLES.SUPERADMIN]), (req, res) => {
@@ -88,3 +91,4 @@ router.get("/solved/:studentId", auth([ROLES.INSTRUCTOR, ROLES.SUPERADMIN]), (re
 });
 
 module.exports = router;
+
