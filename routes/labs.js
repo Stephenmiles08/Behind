@@ -113,33 +113,28 @@ router.get('/', auth(), (req, res) => {
 
 // Get single lab info (students call 
 
-router.get("/:id", auth(), (req, res) => {
-  const labId = req.params.id;
+// GET /labs/:id  (for students)
+router.get('/:id', auth([ROLES.STUDENT, ROLES.INSTRUCTOR, ROLES.SUPERADMIN]), (req, res) => {
   const userId = req.user.id;
-  const userRoles = req.user.role;
-  const isPrivileged = userRoles.includes("superadmin") || userRoles.includes("instructor");
+  const labId = req.params.id;
 
-  const q = `
-    SELECT labs.*,
-           CASE WHEN submissions.score_awarded > 0 THEN 1 ELSE 0 END AS completed
-    FROM labs
-    LEFT JOIN submissions
-      ON submissions.lab_id = labs.id 
-     AND submissions.student_id = ?
-    WHERE labs.id = ?
-    LIMIT 1
-  `;
+  db.get(`
+    SELECT l.*, 
+           EXISTS(
+             SELECT 1 FROM submissions s 
+             WHERE s.student_id = ? AND s.lab_id = l.id AND s.score_awarded > 0
+           ) AS completed
+    FROM labs l 
+    WHERE l.id = ?
+  `, [userId, labId], (err, lab) => {
+    if (err || !lab) return res.status(404).json({ error: 'Lab not found' });
 
-  db.get(q, [userId, labId], (err, row) => {
-    if (err) return res.status(500).json({ error: "DB error" });
-    if (!row) return res.status(404).json({ error: "Lab not found" });
+    // Convert SQLite 0/1 to boolean
+    lab.completed = !!lab.completed;
 
-    const lab = { ...row, completed: !!row.completed };
-
-    // Hide flag for students only
-    if (!isPrivileged) {
-      lab.flag = "Nice try😁😁";
-    
+    // Hide real flag from students
+    if (req.user.role === ROLES.STUDENT) {
+      lab.flag = "flag{hidden_for_students}";
     }
 
     res.json(lab);
