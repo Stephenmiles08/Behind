@@ -132,6 +132,8 @@ router.get('/:id', auth([ROLES.STUDENT, ROLES.INSTRUCTOR, ROLES.SUPERADMIN]), (r
     // Convert SQLite 0/1 to boolean
     lab.completed = !!lab.completed;
 
+    
+
     // Hide real flag from students
     if (req.user.role === ROLES.STUDENT) {
       lab.flag = "flag{hidden_for_students}";
